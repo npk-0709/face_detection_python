@@ -1,9 +1,28 @@
+print("ĐANG LOAD MÔ HÌNH MTCNN")
 import dlib
 import cv2
 import numpy as np
 import os
 import shutil
 from PIL import Image
+from mtcnn import MTCNN
+import requests
+from bs4 import BeautifulSoup
+import randoms
+import threading
+
+def download(uid, path):
+    url = f"https://www.facebook.com/profile.php?id={uid}"
+    r = requests.get(url)
+    soup = BeautifulSoup(r.content, 'html.parser')
+    meta_tag = soup.find('meta', property='og:image')
+    if meta_tag and 'content' in meta_tag.attrs:
+        r = requests.get(meta_tag['content'])
+        with open(path, 'wb') as file:
+            file.write(r.content)
+        return True
+    else:
+        return None
 
 
 def flip_resize(image, savex):
@@ -153,45 +172,53 @@ def detective_glass(image):
             return False
 
 
-def is_human_face(image_path):
-    detector = dlib.get_frontal_face_detector()
-    predictor = dlib.shape_predictor(
-        "model/shape_predictor_68_face_landmarks.dat")
+def is_human_face(detector: MTCNN, image_path):
     img = cv2.imread(image_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = detector(gray)
-    if len(faces) != 1:
+    faces = detector.detect_faces(img)
+    if len(faces) == 1:
+        face = faces[0]
+        landmarks = face.get('keypoints', {})
+        if 'left_eye' in landmarks and 'right_eye' in landmarks and 'nose' in landmarks and 'mouth_left' in landmarks and 'mouth_right' in landmarks:
+            return True
+        else:
+            return False
+    else:
         return False
 
-    for face in faces:
-        landmarks = predictor(gray, face)
-        left_eye = [landmarks.part(i) for i in range(36, 42)]
-        right_eye = [landmarks.part(i) for i in range(42, 48)]
-        nose = [landmarks.part(i) for i in range(27, 36)]
-        mouth = [landmarks.part(i) for i in range(48, 68)]
-        if left_eye and right_eye and nose and mouth:
-            return True
-    return False
 
+def app(uid_list):
+    dir_image = "images/"
+    detector = MTCNN()
+    for uid in uid_list:
+        image_md5 = randoms.md5(randoms.rand_sha1())+'.jpg'
+        imageFile = dir_image+image_md5
+        print("[*] Chờ tải ảnh * "+image_md5)
+        e = download(str(uid).strip(), imageFile)
+        if not e:
+            print("[*] Không Thể Tải Ảnh * "+image_md5)
+            continue
+        print("[*] Tải Hoàn Tất - Đang Xử Lý * "+image_md5)
+        isp = is_human_face(detector, imageFile)
+        if isp:
+            dev = detective_glass(imageFile)
+            if dev:
+                shutil.copy(f'{imageFile}', f"error/{image_md5}")
+            else:
+                flip_resize(f'{imageFile}', f"success/{image_md5}")
+        else:
+            shutil.copy(f'{imageFile}', f"error/{image_md5}")
+        print("[*] Hoàn Tất * "+image_md5)
 
 if __name__ == "__main__":
-    dir_image = "images/"
-    directories = ["success", "error"]
-
     [
-        os.makedirs(dir_name) for dir_name in directories if not os.path.exists(dir_name)
+        os.makedirs(dir_name) for dir_name in ["success", "error","images"] if not os.path.exists(dir_name)
     ]
-
-    image_paths = os.listdir(dir_image)
-    for image_path in image_paths:
-        print("[*] PROCESSING: "+image_path)
-        isp = is_human_face(dir_image+image_path)
-        if isp:
-            dev = detective_glass(dir_image+image_path)
-            if dev:
-                shutil.copy(f'{dir_image}{image_path}', f"error/{image_path}")
-            else:
-                flip_resize(f'{dir_image}{image_path}',f"success/{image_path}")
-
-        else:
-            shutil.copy(f'{dir_image}{image_path}', f"error/{image_path}")
+    with open("uid.txt", "r", encoding="utf-8") as f:
+        uids = f.readlines()
+    thr = int(input(f"[Tìm Thấy {len(uids)} UID] Nhập Số Luồng Dưới 10: "))
+    if thr > 10:
+        print("error , limit 10")
+        exit()
+    uids_split = np.array_split(uids, thr)
+    for i in range(thr):
+        th = threading.Thread(target=app, args=(uids_split[i],)).start()
