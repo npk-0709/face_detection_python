@@ -1,5 +1,5 @@
 from getImage import *
-from main import *
+from main_url import *
 import threading
 import shutil
 import os
@@ -12,12 +12,12 @@ def app():
     folderNoGlass = "noglass/"
     for i in range(99999):
         imagePath, checksum = getImagex(folderCache)
-        check = detectedGlass(image_path=imagePath)
-        if check:
-            shutil.copy(imagePath, folderGlass)
-        else:
-            shutil.copy(imagePath, folderNoGlass)
-        os.remove(imagePath)
+        #check = detectedGlass(image_path=imagePath)
+        #if check:
+        #    shutil.copy(imagePath, folderGlass)
+        #else:
+        #    shutil.copy(imagePath, folderNoGlass)
+        #os.remove(imagePath)
 
 
 for i in range(10):
